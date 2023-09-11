@@ -7,6 +7,8 @@
 #include "mex.hpp"
 #include "mexAdapter.hpp"
 #include <variant>
+#include <iostream>
+#include <fstream>
 
 namespace sitk = itk::simple;
 
@@ -14,22 +16,43 @@ class MexFunction : public matlab::mex::Function {
 public:
 
     //Operator API for matlab to call
-    template<typename T>
     void operator()(matlab::mex::ArgumentList outputs, matlab::mex::ArgumentList inputs) {
+
+        // APIs to communicate with matlab runtime 
+        std::shared_ptr<matlab::engine::MATLABEngine> matlabPtr = getEngine();
+        matlab::data::ArrayFactory factory;
+
+
         checkArguments(outputs, inputs);
-        matlab::data::TypedArray<T> inMatrix = std::move(inputs[0]);
 
-        //Call Bias Correction
-        std::vector<matlab::data::TypedArray<T>> outputVector = N4BiasCorrection(inMatrix);
 
-        //Separate corrected image and bias field
-        matlab::data::TypedArray<T> outputMatrix = outputVector[0]; //corrected image
-        matlab::data::TypedArray<T> logBiasMatrix = outputVector[1]; //log bias field image
+        if (inputs[0].getType() == matlab::data::ArrayType::DOUBLE) {
+            matlab::data::TypedArray<double> inMatrix = std::move(inputs[0]);
+            process<double>(outputs, inMatrix);
+        }else if (inputs[0].getType() == matlab::data::ArrayType::SINGLE) {
+            matlab::data::TypedArray<float> inMatrix = std::move(inputs[0]);
+            process<float>(outputs, inMatrix);
+        }else{
+            //handle unspported data type
+            matlabPtr->feval(u"error", 
+                0, std::vector<matlab::data::Array>({ factory.createScalar("Input datatype not supported. Supported types: double and single (noncomplex)") }));
+        }
 
-        //Asign outputs
+
+    }
+
+    template<typename T>
+    void process(matlab::mex::ArgumentList& outputs, matlab::data::TypedArray<T>& inMatrix) {
+        // Call Bias Correction
+        std::vector<matlab::data::TypedArray<T>> outputVector = N4BiasCorrection<T>(inMatrix);
+
+        // Separate corrected image and bias field
+        matlab::data::TypedArray<T> outputMatrix = outputVector[0]; // corrected image
+        matlab::data::TypedArray<T> logBiasMatrix = outputVector[1]; // log bias field image
+
+        // Assign outputs
         outputs[0] = outputMatrix;
         outputs[1] = logBiasMatrix;
-
     }
 
     //Main funtionality N4BiasCorrection
@@ -45,28 +68,11 @@ public:
         size_t nDim = sizesArray.size();
         size_t nElms = inMatrix.getNumberOfElements();
 
-        bool isDouble = true;
-
-
-        //Convert from matlab data types to  pointer of right type
-        if (inMatrix.getType() == matlab::data::ArrayType::DOUBLE) {
-            isDouble = true;
-        }
-        else if (inMatrix.getType() == matlab::data::ArrayType::SINGLE){
-           
-             isDouble = false;
-        }
-        else { 
-            //handle unspported data type
-            matlabPtr->feval(u"error", 
-                0, std::vector<matlab::data::Array>({ factory.createScalar("Input datatype not supported. Supported types: double and single (noncomplex)") }));
-        }
-
         //Create Native pointer buffer
-        T* imageBuffer = Matrix2Pointer(inMatrix);
+        T* imageBuffer = Matrix2Pointer<T>(inMatrix);
 
         //Create SimpleITK Image 
-        sitk::Image inputImage = CreateImageFromBuffer(imageBuffer, sizesArray, isDouble);
+        sitk::Image inputImage = CreateImageFromBuffer(imageBuffer, sizesArray);
         sitk::Image image = inputImage;
 
         //Calculate Mask
@@ -77,32 +83,45 @@ public:
         sitk::N4BiasFieldCorrectionImageFilter *corrector = new sitk::N4BiasFieldCorrectionImageFilter();
         unsigned int numFittingLevels = 4;
 
-
+        sitk::WriteImage(image, "InputImage.nrrd" );
         //Calculates corrected image and log_bias_field
         sitk::Image corrected_image = corrector->Execute( image, maskImage );
         sitk::Image log_bias_field = corrector->GetLogBiasFieldAsImage( inputImage );
+        sitk::WriteImage(corrected_image, "CorrectedImage.nrrd" );
 
         //Get Image buffer from the sitk Image objects
         T* outputImageBuffer;
         T* logBiasImageBuffer;
 
-        if (isDouble) {
-            outputImageBuffer = corrected_image.GetBufferAsDouble();
-            logBiasImageBuffer = log_bias_field.GetBufferAsDouble();
-        }else{
-            outputImageBuffer = corrected_image.GetBufferAsFloat();
-            logBiasImageBuffer = log_bias_field.GetBufferAsFloat();
-        }
+        GetBufferFromImage(corrected_image, outputImageBuffer);
+        //GetBufferFromImage(log_bias_field, logBiasImageBuffer);
 
-        matlab::data::TypedArray<T> outputMatrix = Pointer2Matrix(outputImageBuffer, sizesArray);
-        matlab::data::TypedArray<T> logBiasMatrix = Pointer2Matrix(logBiasImageBuffer, sizesArray);
+        WritePointerToRaw("input.raw", imageBuffer, static_cast<int>(nElms));
+        WritePointerToRaw("output.raw", outputImageBuffer, static_cast<int>(nElms));
+        WritePointerToRaw("output1.raw", outputImageBuffer, static_cast<int>(nElms));
+
+        //Convert to Matlab Array
+        matlab::data::TypedArray<T> outputMatrix = Pointer2Matrix<T>(outputImageBuffer, sizesArray);
+        matlab::data::TypedArray<T> logBiasMatrix = Pointer2Matrix<T>(imageBuffer, sizesArray);
 
         return std::vector<matlab::data::TypedArray<T>>({outputMatrix, logBiasMatrix});
 
     }
 
+    /* This overloaded method returns a float* buffer pointer from a SimpleITK Image object
+    */
+    void GetBufferFromImage(sitk::Image sitkImage, float* &imageBuffer){
+        imageBuffer = sitkImage.GetBufferAsFloat();
+    }
 
-    /* This method converts a matlab::data::Array of either double or single and convert 
+    /* This overloaded method returns a double* buffer pointer from a SimpleITK Image object
+    */
+    void GetBufferFromImage(sitk::Image sitkImage, double* &imageBuffer){
+        imageBuffer = sitkImage.GetBufferAsDouble();
+    }
+
+
+    /* This method converts a matlab::data::TypedArray of either double or single and convert 
     to a 1D generic pointer of the same type
     */
     template<typename T>
@@ -114,23 +133,9 @@ public:
         size_t nDim = sizesArray.size();
         size_t nElms = inMatrix.getNumberOfElements();
 
-        /*
-        std::variant<double*, float*> nativeArrVariant;
-
-        //Decale pointer of right type and allocate memory
-        if (inMatrix.getType() == matlab::data::ArrayType::DOUBLE) {
-            double *nativeArr = new double[nElms];
-            nativeArrVariant = nativeArr;
-        }
-        else if (inMatrix.getType() == matlab::data::ArrayType::SINGLE){
-            float *nativeArr = new float[nElms];
-            nativeArrVariant = nativeArr;
-        }
-        */
-
         T *nativeArr = new T[nElms];
 
-         // Copy the data to native array
+        // Copy the data to native array
         size_t idx = 0;
         for (auto elem : inMatrix) {
             nativeArr[idx] = elem;
@@ -151,9 +156,6 @@ public:
         // Create empty TypedArray
         matlab::data::ArrayFactory arrayFactory;
         matlab::data::TypedArray<T> matlabArray = arrayFactory.createArray<T>(dims);
-
-        //Get number of total elemens
-        size_t nElms = matlabArray.getNumberOfElements();
 
         // Copy the data to matla::array
         size_t idx = 0;
@@ -185,23 +187,28 @@ public:
     }
     */
 
-    /* This method creates a SimpleITK Image object from a std::variant<double*, float*> buffer pointer
+    /* This overloaded method creates a SimpleITK Image object from a float* buffer pointer
     */
-    template<typename T>
-    sitk::Image CreateImageFromBuffer(T* imageBuffer, std::vector<size_t> sizesArray, bool isDouble){
+    sitk::Image CreateImageFromBuffer(float* imageBuffer, std::vector<size_t> sizesArray){
         
         //Create unsigned integer vector to be compatible with sitk::ImportAsFloat
         std::vector<unsigned int> sizesArrayUInt(sizesArray.begin(), sizesArray.end());
 
-        if (isDouble){
-            //double* imageBuffer = std::get<double*>(imageBufferVariant);
-            return sitk::ImportAsDouble(imageBuffer, sizesArrayUInt);
-        }else{
-            //float* imageBuffer = std::get<float*>(imageBufferVariant);
-            return sitk::ImportAsFloat(imageBuffer, sizesArrayUInt);
-        }
+        //Return Image
+        return sitk::ImportAsFloat(imageBuffer, sizesArrayUInt);
+    
+    }
 
+    /* This overloaded method creates a SimpleITK Image object from a double* buffer pointer
+    */
+    sitk::Image CreateImageFromBuffer(double* imageBuffer, std::vector<size_t> sizesArray){
+        
+        //Create unsigned integer vector to be compatible with sitk::ImportAsDouble
+        std::vector<unsigned int> sizesArrayUInt(sizesArray.begin(), sizesArray.end());
 
+        //Return Image
+        return sitk::ImportAsDouble(imageBuffer, sizesArrayUInt);
+    
     }
 
     //Method to check validity of input
@@ -227,5 +234,24 @@ public:
             matlabPtr->feval(u"error", 
                 0, std::vector<matlab::data::Array>({ factory.createScalar("Input must be images with 2D, 3D, or 4D") }));
         }
+    }
+
+    std::vector<size_t> IndexToSubscript(size_t index, const std::vector<size_t>& dims) {
+        std::vector<size_t> subscripts(dims.size(), 0);
+        size_t remaining = index;
+
+        for (int i = dims.size() - 1; i >= 0; --i) {
+            subscripts[i] = remaining % dims[i];
+            remaining /= dims[i];
+        }
+
+        return subscripts;
+    }
+
+    template<typename T>
+    void WritePointerToRaw(std::string fileName, T* pointer, int size){
+        std::ofstream outFile(fileName, std::ios::out | std::ios::binary);
+        outFile.write(reinterpret_cast<char*>(pointer), size * sizeof(T));
+        outFile.close();
     }
 };
