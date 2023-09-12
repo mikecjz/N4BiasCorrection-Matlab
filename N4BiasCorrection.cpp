@@ -1,6 +1,9 @@
 /*
-
-*
+*This file contains the source code for the N4BiasCorrection functionality that is to be called from matlab 
+*as a matlab executable. 
+*Usage inside matlab [corrected_image, log_bias_field] = N4BiasCorrection(original_image)
+*Currently, it only supports 2D or 3D images with float(single) or double 
+*Author: Junzhou Chen (Junzhou.Chen@med.usc.edu)
 */
 #include <SimpleITK.h>
 #include <stdlib.h>
@@ -68,11 +71,11 @@ public:
         size_t nDim = sizesArray.size();
         size_t nElms = inMatrix.getNumberOfElements();
 
-        //Create Native pointer buffer
+        //Create native pointer buffer
         T* imageBuffer = Matrix2Pointer<T>(inMatrix);
 
         //Create SimpleITK Image 
-        sitk::Image inputImage = CreateImageFromBuffer(imageBuffer, sizesArray);
+        sitk::Image inputImage = CreateImageFromPointer(imageBuffer, sizesArray);
         sitk::Image image = inputImage;
 
         //Calculate Mask
@@ -83,42 +86,19 @@ public:
         sitk::N4BiasFieldCorrectionImageFilter *corrector = new sitk::N4BiasFieldCorrectionImageFilter();
         unsigned int numFittingLevels = 4;
 
-        sitk::WriteImage(image, "InputImage.nrrd" );
         //Calculates corrected image and log_bias_field
         sitk::Image corrected_image = corrector->Execute( image, maskImage );
         sitk::Image log_bias_field = corrector->GetLogBiasFieldAsImage( inputImage );
-        sitk::WriteImage(corrected_image, "CorrectedImage.nrrd" );
 
-        //Get Image buffer from the sitk Image objects
-        T* outputImageBuffer;
-        T* logBiasImageBuffer;
-
-        GetBufferFromImage(corrected_image, outputImageBuffer);
-        //GetBufferFromImage(log_bias_field, logBiasImageBuffer);
-
-        WritePointerToRaw("input.raw", imageBuffer, static_cast<int>(nElms));
-        WritePointerToRaw("output.raw", outputImageBuffer, static_cast<int>(nElms));
-        WritePointerToRaw("output1.raw", outputImageBuffer, static_cast<int>(nElms));
 
         //Convert to Matlab Array
-        matlab::data::TypedArray<T> outputMatrix = Pointer2Matrix<T>(outputImageBuffer, sizesArray);
-        matlab::data::TypedArray<T> logBiasMatrix = Pointer2Matrix<T>(imageBuffer, sizesArray);
+        matlab::data::TypedArray<T> outputMatrix = Image2Matrix<T>(corrected_image, sizesArray);
+        matlab::data::TypedArray<T> logBiasMatrix = Image2Matrix<T>(log_bias_field, sizesArray);
 
         return std::vector<matlab::data::TypedArray<T>>({outputMatrix, logBiasMatrix});
 
     }
 
-    /* This overloaded method returns a float* buffer pointer from a SimpleITK Image object
-    */
-    void GetBufferFromImage(sitk::Image sitkImage, float* &imageBuffer){
-        imageBuffer = sitkImage.GetBufferAsFloat();
-    }
-
-    /* This overloaded method returns a double* buffer pointer from a SimpleITK Image object
-    */
-    void GetBufferFromImage(sitk::Image sitkImage, double* &imageBuffer){
-        imageBuffer = sitkImage.GetBufferAsDouble();
-    }
 
 
     /* This method converts a matlab::data::TypedArray of either double or single and convert 
@@ -151,21 +131,42 @@ public:
     (double or float)
     */
     template<typename T>
-    matlab::data::TypedArray<T> Pointer2Matrix(T* imageBuffer, std::vector<size_t>& dims){
+    matlab::data::TypedArray<T> Image2Matrix(sitk::Image image, std::vector<size_t>& dims){
 
         // Create empty TypedArray
         matlab::data::ArrayFactory arrayFactory;
         matlab::data::TypedArray<T> matlabArray = arrayFactory.createArray<T>(dims);
 
+        //Helper variable that help selects the overloaded GetPixelFromImage function definition
+        T dummyVar;
+
         // Copy the data to matla::array
         size_t idx = 0;
         for (auto& elem : matlabArray) {
-            elem = imageBuffer[idx];
+            //Calculate subscripts from linear index
+            std::vector<uint32_t> subscripts = IndexToSubscript(idx, dims);
+
+            //Extract pixel value from subcripts and assign to matlab matrix
+            elem = GetPixelFromImage(image, subscripts, dummyVar);
             idx++;
         }
 
         return matlabArray;
   
+    }
+
+    /* This overloaded method returns a float* buffer pointer from a SimpleITK Image object
+    */
+    float GetPixelFromImage(sitk::Image sitkImage, std::vector<uint32_t> subscripts, float dummyVar){
+        float pixelVal = sitkImage.GetPixelAsFloat(subscripts);
+        return pixelVal;
+    }
+
+    /* This overloaded method returns a double* buffer pointer from a SimpleITK Image object
+    */
+    double GetPixelFromImage(sitk::Image sitkImage, std::vector<uint32_t> subscripts, double dummyVar){
+        double pixelVal = sitkImage.GetPixelAsDouble(subscripts);
+        return pixelVal;
     }
 
     // Function to recursively copy data
@@ -189,7 +190,7 @@ public:
 
     /* This overloaded method creates a SimpleITK Image object from a float* buffer pointer
     */
-    sitk::Image CreateImageFromBuffer(float* imageBuffer, std::vector<size_t> sizesArray){
+    sitk::Image CreateImageFromPointer(float* imageBuffer, std::vector<size_t> sizesArray){
         
         //Create unsigned integer vector to be compatible with sitk::ImportAsFloat
         std::vector<unsigned int> sizesArrayUInt(sizesArray.begin(), sizesArray.end());
@@ -201,7 +202,7 @@ public:
 
     /* This overloaded method creates a SimpleITK Image object from a double* buffer pointer
     */
-    sitk::Image CreateImageFromBuffer(double* imageBuffer, std::vector<size_t> sizesArray){
+    sitk::Image CreateImageFromPointer(double* imageBuffer, std::vector<size_t> sizesArray){
         
         //Create unsigned integer vector to be compatible with sitk::ImportAsDouble
         std::vector<unsigned int> sizesArrayUInt(sizesArray.begin(), sizesArray.end());
@@ -236,11 +237,13 @@ public:
         }
     }
 
-    std::vector<size_t> IndexToSubscript(size_t index, const std::vector<size_t>& dims) {
-        std::vector<size_t> subscripts(dims.size(), 0);
+    /*Helper function to convert a linear index into subscripts. similar to the matlab function ind2sub
+    */
+    std::vector<uint32_t> IndexToSubscript(size_t index, const std::vector<size_t>& dims) {
+        std::vector<uint32_t> subscripts(dims.size(), 0);
         size_t remaining = index;
 
-        for (int i = dims.size() - 1; i >= 0; --i) {
+        for (int i = 0; i < dims.size(); i++) {
             subscripts[i] = remaining % dims[i];
             remaining /= dims[i];
         }
@@ -248,6 +251,8 @@ public:
         return subscripts;
     }
 
+    /* This function is a debug utility that writes a 1D pointer array to a binary raw file. 
+    */
     template<typename T>
     void WritePointerToRaw(std::string fileName, T* pointer, int size){
         std::ofstream outFile(fileName, std::ios::out | std::ios::binary);
