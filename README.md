@@ -9,7 +9,7 @@ This code provides an MATLAB C++ interface to call N4BiasCorrection implemented 
 
 
 
-## Building MEX 
+## Building [MEX](https://www.mathworks.com/help/matlab/matlab_external/build-c-mex-programs.html) 
 
 1. git clone the [SimpleITK project](https://github.com/SimpleITK/SimpleITK) and compile following the [official doc](https://simpleitk.readthedocs.io/en/master/building.html). The functionalities of this repo requires the compiled libraries from the [SimpleITK project](https://github.com/SimpleITK/SimpleITK).
 
