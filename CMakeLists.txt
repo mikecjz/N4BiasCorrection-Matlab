@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.16.3)
+cmake_minimum_required(VERSION 3.16.2)
 
 
 
 project(N4BiasCorrection)
 
-set(SimpleITK_DIR "/home/jc_350/Toolboxes/SimpleITK/SimpleITK-build/SimpleITK-build")
-set(ITK_DIR "/home/jc_350/Toolboxes/SimpleITK/SimpleITK-build/ITK-build")
+set(SimpleITK_DIR "/scratch1/jc_350/SimpleITK/SimpleITK-build/SimpleITK-build")
+set(ITK_DIR "/scratch1/jc_350/SimpleITK/SimpleITK-build/ITK-build")
 
 # Set compiler flags for debugging
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
