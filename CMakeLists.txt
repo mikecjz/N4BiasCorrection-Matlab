@@ -7,6 +7,10 @@ project(N4BiasCorrection)
 set(SimpleITK_DIR "/home/jc_350/Toolboxes/SimpleITK/SimpleITK-build/SimpleITK-build")
 set(ITK_DIR "/home/jc_350/Toolboxes/SimpleITK/SimpleITK-build/ITK-build")
 
+# Set compiler flags for debugging
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
+
 find_package(Matlab)
 find_package(SimpleITK)
 find_package(ITK)
