@@ -24,6 +24,8 @@ cd build/
 
 module load gcc/11.3.0 #gcc/11.3.0 is required
 module load cmake 
+module load matlab
+
 cmake ../ -DCMAKE_C_COMPILER=/spack/apps/gcc/11.3.0/bin/gcc -DCMAKE_CXX_COMPILER=/spack/apps/gcc/11.3.0/bin/g++
 ```
 >Should you choose to compile with the debug mode, Run cmake with  <code class="bash"> cmake -DCMAKE_BUILD_TYPE=Debug ./ </code>. Debug configuration example for VS Code is included in [launch.json](.vscode/launch.json)
