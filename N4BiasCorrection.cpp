@@ -50,12 +50,15 @@ public:
     void process(matlab::mex::ArgumentList &outputs, matlab::data::TypedArray<T> &inMatrix)
     {
 
+        matlab::data::ArrayFactory arrayFactory;
+        std::vector<size_t> sizesArray = inMatrix.getDimensions();
+
         // Define output arrays
-        matlab::data::TypedArray<T> outputMatrix;
-        matlab::data::TypedArray<float> logBiasMatrix;
+        matlab::data::TypedArray<T> outputMatrix = arrayFactory.createArray<T>(sizesArray);
+        matlab::data::TypedArray<float> logBiasMatrix = arrayFactory.createArray<float>(sizesArray);;
 
         // Call Bias Correction. outputMatrix, logBiasMatrix passed as references
-        std::vector<matlab::data::TypedArray<T>> outputVector = N4BiasCorrection<T>(inMatrix, outputMatrix, logBiasMatrix);
+        N4BiasCorrection<T>(inMatrix, outputMatrix, logBiasMatrix);
 
         // Assign outputs
         outputs[0] = outputMatrix;
@@ -97,9 +100,9 @@ public:
         sitk::Image corrected_image = corrector->Execute(image, maskImage);
         sitk::Image log_bias_field = corrector->GetLogBiasFieldAsImage(inputImage);
 
-        // Convert to Matlab Array
-        outputMatrix = Image2Matrix<T>(corrected_image, sizesArray);
-        logBiasMatrix = Image2Matrix<float>(log_bias_field, sizesArray);
+        // Copy image pixel value to Matlab Array
+        Image2Matrix<T>(corrected_image, outputMatrix,sizesArray);
+        Image2Matrix<float>(log_bias_field, logBiasMatrix, sizesArray);
 
     }
 
@@ -129,16 +132,12 @@ public:
         return nativeArr;
     }
 
-    /* This method converts from a 1D generic pointer to matlab::data::Array of the same type
+    /* This method copies value from a sitk::image to matlab::data::TypedArray
     (double or float)
     */
     template <typename T>
-    matlab::data::TypedArray<T> Image2Matrix(sitk::Image image, std::vector<size_t> &dims)
+    void Image2Matrix(sitk::Image image, matlab::data::TypedArray<T>& matlabArray, std::vector<size_t> &dims)
     {
-
-        // Create empty TypedArray
-        matlab::data::ArrayFactory arrayFactory;
-        matlab::data::TypedArray<T> matlabArray = arrayFactory.createArray<T>(dims);
 
         // Helper variable that help selects the overloaded GetPixelFromImage function definition
         T dummyVar;
@@ -155,7 +154,6 @@ public:
             idx++;
         }
 
-        return matlabArray;
     }
 
     /* This overloaded method returns a float* buffer pointer from a SimpleITK Image object
