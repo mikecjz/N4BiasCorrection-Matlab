@@ -21,7 +21,9 @@ This code provides an MATLAB C++ interface to call N4BiasCorrection implemented 
 
 3. Run cmake. 
 ```bash 
-cmake ./
+mkdir -p build
+cd build/
+cmake ..
 ```
 >Should you choose to compile with the debug mode, Run cmake with  <code class="bash"> cmake -DCMAKE_BUILD_TYPE=Debug ./ </code>. Debug configuration example for VS Code is included in [launch.json](.vscode/launch.json)
 
