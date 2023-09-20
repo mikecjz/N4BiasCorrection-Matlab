@@ -38,7 +38,7 @@ make
 
 ## Running N4BiasCorrection in Matlab on USC CARC
 
-`gcc/11.3.0` is required to run the compuliled mex in matlab.
+`gcc/11.3.0` is required to run the compiled mex in matlab.
 
 Enviroment variable `LD_PRELOAD` needs to be properly set.
 
