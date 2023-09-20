@@ -5,34 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug MEX Function",
+            "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/bin/matlab",
-            "args": [
-                "-r",
-                "load('image_bias.mat');[image_corrected,~] = N4BiasCorrection(double(image_bias));"
-            ],
+            "program": "/usr/local/MATLAB/R2021a/bin/glnxa64/MATLAB",
+            "args": ["-r", "load('image_bias.mat'); [image_corrected, ~] = N4BiasCorrection(double(image_bias))"],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${fileDirname}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
                 {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
+                    "text": "handle SIGSEGV nostop"
+                },
+                {
+                     "text": "handle SIGSEGV noprint"
                 }
             ],
-            "miDebuggerPath": "/bin/gdb",
-            "preLaunchTask": "",
-            "miDebuggerArgs": "",
-            "logging": {
-                "trace": true,
-                "traceResponse": true,
-                "engineLogging": true
-            }
+            "miDebuggerPath": "/bin/gdb"
         }
     ]
 }
