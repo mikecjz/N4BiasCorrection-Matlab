@@ -41,6 +41,12 @@ Make sure the compiled executable is in matlab's search path.
 
 This function supports only non-conplex 2D and 3D images with data type float(single) and double.
 
+One can also produce the bias-corrected image with:
+
+```matlab
+corrected_image = image ./ exp(log_bias_field);
+```
+
 ## Demo
 
 ![Bias Correction Demonstration](./figures/combined.png)
