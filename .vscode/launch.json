@@ -11,7 +11,7 @@
             "program": "/usr/local/MATLAB/R2021a/bin/glnxa64/MATLAB",
             "args": ["-r", "load('image_bias.mat'); [image_corrected, ~] = N4BiasCorrection(double(image_bias))"],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
